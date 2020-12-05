@@ -124,11 +124,11 @@ if __name__ == "__main__":
           
             npImage = np.array(new_im)
             npImage = npImage.astype(np.float32) / 255.0
-            outnp = np.rollaxis(npImage, 2, 0)
+            outnp = np.rollaxis(npImage, 2, 0) # move channels from last to 1st dimension
             if out is None:
-                out = outnp[None, None, None,:,:,:]
+                out = outnp[None,:,:,:]
             else:
-                out = np.concatenate((out, outnp[None, None, None,:,:,:]), 1)
+                out = np.concatenate((out, outnp[None, :,:,:]), 1)
 
             numSegments = numSegments + 1
             #new_im.show()
@@ -138,8 +138,7 @@ if __name__ == "__main__":
         frameIndex=frameIndex+1
 
         if (numSegments>=segment_count):
-            frames = torch.from_numpy(out)
-            inputs = frames.reshape((batch_size, -1, height, width))
+            inputs = torch.from_numpy(out)
             outVerbNames = []
             outNounNames = []
             for model in [tsn, tsm]:
@@ -167,7 +166,7 @@ if __name__ == "__main__":
             for vNames in outNounNames:
                 totNames.append(vNames)
             writer.writerow(totNames)
-            #print(str(datetime.timedelta(seconds=ss)), outVerbNames[0], outNounNames[0])
+            print(str(datetime.timedelta(seconds=ss)), outVerbNames[0], outNounNames[0])
             
             out = None
             numSegments = 0
