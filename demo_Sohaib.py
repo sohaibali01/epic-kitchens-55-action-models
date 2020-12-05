@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import logging
-import sys
+import sys, os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -12,33 +12,94 @@ import torch
 import subprocess as sp
 import numpy as np
 
-FFMPEG_BIN = "ffmpeg.exe"
-videoPath = "fp1.mp4"
+import csv
+from collections import defaultdict
+import datetime
+
+FFMPEG_BIN = "./data/ffmpeg.exe"
+videoPath = "./data/fp3.mp4"
+nounCSV = "./data/EPIC_noun_classes.csv"
+verbCSV = "./data/EPIC_verb_classes.csv"
+GT_Output_CSV = "./data/GT-fp3.csv"
+outputCSV = "./data/output.csv"
+tsm_model = "./data/TSM_arch=resnet50_modality=RGB_segments=8-cfc93918.pth.tar"
+tsn_model = "./data/TSN_arch=resnet50_modality=RGB_segments=8-3ecf904f.pth.tar"
 videoWidth = 640
 videoHeight = 360
 width = 224
 height = 224
-skipTime = 0.5 # in sec
-frameRate = 30  # appx from 29.97
+skipTime = 2/8.0 # in sec
+frameRate = 25  # appx 
+videoLength = 60 * 11 # in sec
 skipLength = round(skipTime*frameRate)
+totalFrames = videoLength * frameRate
 frameIndex = 0
 batch_size = 1
 segment_count = 8
 
+def readCsv(fileName):
+    columns = defaultdict(list) # each value in each column is appended to a list
+    with open(fileName) as f:
+        reader = csv.DictReader(f) # read rows into a dictionary format
+        for row in reader: # read a row as {column1: value1, column2: value2,...}
+            for (k,v) in row.items(): # go over each column name and value 
+                columns[k].append(v) # append the value into the appropriate list
+    f.close()                                # based on column name k
+    return columns
+
+def getTop5Accuracy():
+    cols = readCsv(GT_Output_CSV)
+    names = ["TSN( )-Verb", "TSN( )-Noun","TSM( )-Verb", "TSM( )-Noun"]
+    numSamples = len(cols["Time"])
+    for name in names:
+        boolArr = np.zeros(numSamples,dtype=bool)
+        for col in [cols[name[0:4]+str(1)+name[5:]],
+                    cols[name[0:4]+str(2)+name[5:]],
+                    cols[name[0:4]+str(3)+name[5:]],
+                    cols[name[0:4]+str(4)+name[5:]],
+                    cols[name[0:4]+str(5)+name[5:]] ]:
+
+            currentArr=np.zeros(numSamples,dtype=bool)
+            i=0
+            for a, b in zip(col, cols["GT-"+str(name[7:])]):
+                currentArr[i] = (a==b)
+                i=i+1 
+            boolArr =  np.logical_or(boolArr, currentArr)
+        acc = np.sum(boolArr)/numSamples
+        print(name, acc)
+
+                   
+
 if __name__ == "__main__":
     
+    getTop5Accuracy()
+
+    nounLabels = readCsv(nounCSV)
+    verbLabels = readCsv(verbCSV)
+
+    if os.path.exists(outputCSV):
+        os.remove(outputCSV)
+
+    outFile = open(outputCSV, 'w', newline='') 
+    writer = csv.writer(outFile)
+    writer.writerow(["Time", "TSN(1)-Verb", "TSN(2)-Verb","TSN(3)-Verb","TSN(4)-Verb","TSN(5)-Verb",
+                             "TSM(1)-Verb", "TSM(2)-Verb","TSM(3)-Verb","TSM(4)-Verb","TSM(5)-Verb",
+                             "TSN(1)-Noun","TSN(2)-Noun","TSN(3)-Noun","TSN(4)-Noun","TSN(5)-Noun",
+                             "TSM(1)-Noun","TSM(2)-Noun","TSM(3)-Noun","TSM(4)-Noun","TSM(5)-Noun"])
+
     command = [FFMPEG_BIN,
             '-i', videoPath,
             '-f', 'image2pipe',
             '-pix_fmt', 'rgb24',
             '-vcodec','rawvideo', '-']
     pipe = sp.Popen(command, stdout=sp.PIPE, bufsize=10**6) # 1GB
-    tsm = load_checkpoint('TSM_arch=resnet50_modality=RGB_segments=8-cfc93918.pth.tar')
-    tsn = load_checkpoint('TSN_arch=resnet50_modality=RGB_segments=8-3ecf904f.pth.tar')
+    
+    tsm = load_checkpoint(tsm_model)
+    tsn = load_checkpoint(tsn_model)
   
     out = None
     numSegments = 0
-    while(True):
+    while(frameIndex < totalFrames):
         raw_image = pipe.stdout.read(videoWidth*videoHeight*3)
         if ((frameIndex % skipLength) == 0):
             # transform the byte read into a numpy array
@@ -47,16 +108,17 @@ if __name__ == "__main__":
 
             new_im = Image.fromarray(image)
             #new_im.show()
-            minDim = min(videoHeight,videoWidth)
-
-            # Crop the center of the image
-            left = (videoWidth - minDim)/2
-            top = (videoHeight - minDim)/2
-            right = (videoWidth + minDim)/2
-            bottom = (videoHeight + minDim)/2
-            new_im = new_im.crop((left, top, right, bottom))
+            
+            #minDim = min(videoHeight,videoWidth)
+            ## Crop the center of the image
+            #left = (videoWidth - minDim)/2
+            #top = (videoHeight - minDim)/2
+            #right = (videoWidth + minDim)/2
+            #bottom = (videoHeight + minDim)/2
+            #new_im = new_im.crop((left, top, right, bottom))
             new_im = new_im.resize((height,width))
-            new_im.save(str(numSegments)+".jpg")
+            #new_im.save(str(numSegments)+".jpg")
+          
             npImage = np.array(new_im)
             npImage = npImage.astype(np.float32) / 255.0
             outnp = np.rollaxis(npImage, 2, 0)
@@ -75,18 +137,31 @@ if __name__ == "__main__":
         if (numSegments>=segment_count):
             frames = torch.from_numpy(out)
             inputs = frames.reshape((batch_size, -1, height, width))
+            outVerbNames = []
+            outNounNames = []
             for model in [tsn, tsm]:
-                # You can get features out of the models
-                #features = model.features(inputs)
-                # and then classify those features
-                #verb_logits, noun_logits = model.logits(features)
-                #print(verb_logits.numpy(), noun_logits.numpy())
-
-                # or just call the object to classify inputs in a single forward pass
                 verb_logits, noun_logits = model(inputs)
                 verbs = verb_logits.detach().numpy()
                 nouns =  noun_logits.detach().numpy()
-                print(np.argmax(verbs), np.argmax(nouns))
+                verbLabel = verbs[0].argsort()[-5:][::-1]
+                nounLabel = nouns[0].argsort()[-5:][::-1]
+                ind=0
+                while ind<=4:
+                    outVerbNames.append(verbLabels['class_key'][verbLabel[ind]] )
+                    outNounNames.append(nounLabels['class_key'][nounLabel[ind]])
+                    ind = ind + 1
+
+            ss = frameIndex / float(frameRate)
+            totNames = [str(datetime.timedelta(seconds=ss))]
+            for vNames in outVerbNames:
+                totNames.append(vNames)
+            for vNames in outNounNames:
+                totNames.append(vNames)
+            writer.writerow(totNames)
+            print(str(datetime.timedelta(seconds=ss)), outVerbNames[0], outNounNames[0])
+            
             out = None
             numSegments = 0
+
+    outFile.close()
  
