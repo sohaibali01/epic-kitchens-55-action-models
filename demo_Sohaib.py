@@ -15,6 +15,7 @@ import numpy as np
 import csv
 from collections import defaultdict
 import datetime
+import time
 
 FFMPEG_BIN = "./data/ffmpeg.exe"
 videoPath = "./data/fp3.mp4"
@@ -99,6 +100,8 @@ if __name__ == "__main__":
   
     out = None
     numSegments = 0
+    tsnTime=[]
+    tsmTime=[]
     while(frameIndex < totalFrames):
         raw_image = pipe.stdout.read(videoWidth*videoHeight*3)
         if ((frameIndex % skipLength) == 0):
@@ -140,7 +143,13 @@ if __name__ == "__main__":
             outVerbNames = []
             outNounNames = []
             for model in [tsn, tsm]:
+                s = time.time()
                 verb_logits, noun_logits = model(inputs)
+                curr_time = time.time() - s 
+                if model==tsn:
+                    tsnTime.append(curr_time)
+                else:
+                    tsmTime.append(curr_time)
                 verbs = verb_logits.detach().numpy()
                 nouns =  noun_logits.detach().numpy()
                 verbLabel = verbs[0].argsort()[-5:][::-1]
@@ -158,10 +167,12 @@ if __name__ == "__main__":
             for vNames in outNounNames:
                 totNames.append(vNames)
             writer.writerow(totNames)
-            print(str(datetime.timedelta(seconds=ss)), outVerbNames[0], outNounNames[0])
+            #print(str(datetime.timedelta(seconds=ss)), outVerbNames[0], outNounNames[0])
             
             out = None
             numSegments = 0
 
     outFile.close()
+    print("tsm - Inference Time: ", sum(tsmTime)/len(tsmTime))
+    print("tsn - Inference Time: ", sum(tsnTime)/len(tsnTime))
  
