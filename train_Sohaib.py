@@ -16,7 +16,8 @@ import datasetManager
 from model_loader import load_checkpoint
 
 batch_size = 6
-num_epochs = 30
+num_epochs = 25
+
 feature_extract = True
 tsm_model = "./data/TSM_arch=resnet50_modality=RGB_segments=8-cfc93918.pth.tar"
 savePath1 = "./data/customModel1.pth"
@@ -24,8 +25,8 @@ savePath2 = "./data/customModel2.pth"
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25):
     since = time.time()
 
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = 0.0
+    #best_model_wts = copy.deepcopy(model.state_dict())
+    #best_acc = 0.0
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))

@@ -26,8 +26,8 @@ if __name__ == "__main__":
     for inputs, verb_labels, noun_labels in dt:
         verb_logits, noun_logits = tsm_Model(inputs)
        
-        # Top 3
-        k = 3 # return top-3
+        # Top 5
+        k = 5 # return top-5
         _, sorted_verb_indices = torch.topk(verb_logits, k, dim=1, largest=True, sorted=True)
         _, sorted_noun_indices = torch.topk(noun_logits, k, dim=1, largest=True, sorted=True)
         running_corrects_verbs_k += torch.sum(sorted_verb_indices == verb_labels.data)
@@ -48,8 +48,8 @@ if __name__ == "__main__":
     print("Top-1 Accuracy: Verb ", acc_verb.data)
     print("Top-1 Accuracy: Noun ", acc_noun.data)
 
-    print("Top-3 Accuracy: Verb ", acc_verb_k.data)
-    print("Top-3 Accuracy: Noun ", acc_noun_k.data)
+    print("Top-5 Accuracy: Verb ", acc_verb_k.data)
+    print("Top-5 Accuracy: Noun ", acc_noun_k.data)
 
     
    

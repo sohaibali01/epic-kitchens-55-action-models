@@ -88,6 +88,7 @@ def get_model_settings_from_checkpoint(ckpt: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_checkpoint(checkpoint_path: Path) -> torch.nn.Module:
+    #d = open(checkpoint_path,'rb')
     ckpt = torch.load(checkpoint_path)
     model_settings = get_model_settings_from_checkpoint(ckpt)
     model = make_model(model_settings)
